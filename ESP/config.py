@@ -1,45 +1,47 @@
+from machine import ADC
 import network
 import socket
-import random
 from time import sleep
 
-# Set up the ESP8266 as an Access Point
+# Calibration constants
+ADC_DRY = 0      # Replace with actual dry value
+ADC_WET = 4095   # Replace with actual wet value (assuming 12-bit ADC)
+
+# Set up ESP8266 as an Access Point
 ap = network.WLAN(network.AP_IF)
 ap.active(True)
-ap.config(essid='PlantMoisture_AP', password='12345678')
+ap.config(essid='DAMIAn', password='12345678')
 
-# Create a socket server to handle incoming requests
+# Set up ADC
+adc = ADC(0)
+
+# Create socket server
 addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
 s = socket.socket()
 s.bind(addr)
 s.listen(1)
-
 print("Access Point created with IP:", ap.ifconfig()[0])
+
+def calculate_moisture_percentage(adc_value):
+    if adc_value <= ADC_DRY:
+        return 0
+    elif adc_value >= ADC_WET:
+        return 100
+    else:
+        return ((adc_value - ADC_DRY) / (ADC_WET - ADC_DRY)) * 100
 
 while True:
     try:
-        # Wait for a connection from the Django server
         cl, addr = s.accept()
         print('Connection from', addr)
-        
-        # Simulate a random moisture value (0-100%)
-        moisture_percentage = random.uniform(0, 100)
-        
-        # Send the simulated moisture value as a response
-        response = f"{moisture_percentage:.1f}"
-        
-        # Read the request data (not needed here, but it's typical to read the incoming request)
-        cl_file = cl.makefile('rwb', 0)
-        while True:
-            line = cl_file.readline()
-            if not line or line == b'\r\n':
-                break
-        
-        # Send HTTP response header
+
+        adc_value = adc.read()
+        moisture_percentage = calculate_moisture_percentage(adc_value)
+
         cl.send('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n')
-        # Send the simulated moisture value as the response body
-        cl.send(response)
+        cl.send(str(int(moisture_percentage)))
         cl.close()
+        sleep(5)
     except OSError as e:
         cl.close()
         print('Connection closed')
